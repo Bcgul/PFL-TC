@@ -1,0 +1,99 @@
+seed: 42
+data:
+  path: data/cabin_comfort.csv
+  valid_ranges:
+    temp_c:
+    - -30.0
+    - 60.0
+    skin_temp_c:
+    - 10.0
+    - 45.0
+    rh_pct:
+    - 10.0
+    - 100.0
+  max_interp_gap: 10
+  max_gap_s: 60.0
+target:
+  mode: griffiths
+  zones:
+  - '1'
+  - '2'
+  griffiths_slope: 0.5
+  columns: []
+features:
+  basic:
+  - ambient_temp_c
+  - cabin_temp_c
+  - cabin_rh_pct
+  - light_intensity
+  zone:
+  - skin_temp_c
+  - rh_pct
+  zones:
+  - '1'
+  - '2'
+  include_vote: false
+windows:
+  seq_len: 1
+  stride: 1
+split:
+  mode: chronological
+  train: 0.7
+  val: 0.15
+  test: 0.15
+  min_context: 0
+normalization:
+  _temp_c:
+  - 20.0
+  - 10.0
+  _rh_pct:
+  - 40.0
+  - 20.0
+  light_intensity:
+  - 3.0
+  - 3.0
+  - log1p
+  _vote:
+  - 0.0
+  - 1.5
+  met:
+  - 1.2
+  - 0.5
+  clo:
+  - 0.7
+  - 0.4
+  target:
+  - 22.0
+  - 3.0
+model:
+  lstm_units: 50
+  base_units: 10
+  zone_units: 20
+  learning_rate: 0.001
+  batch_size: 32
+centralized:
+  epochs: 100
+  patience: 20
+federated:
+  partition: by_day
+  num_clients: 2
+  rounds: 10
+  local_epochs: 10
+  strategy: fedavg
+experiment:
+  seeds:
+  - 0
+  - 1
+  - 2
+  - 3
+  - 4
+  variants:
+  - basic
+  - personalized_baseline
+  - personalized_model
+  regimes:
+  - centralized
+  - local
+  - fedavg
+  - fedper
+  output_dir: results
