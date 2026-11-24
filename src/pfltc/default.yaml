@@ -1,0 +1,97 @@
+# PFL-TC default configuration.
+# Every script accepts `--config <file.yaml>` (deep-merged onto this file) and
+# `--set key.subkey=value` overrides, e.g. `--set windows.seq_len=20`.
+
+seed: 42
+
+data:
+  path: data/cabin_comfort.csv
+  # Values outside these ranges are treated as sensor glitches, set to NaN and
+  # linearly interpolated within the same drive (at most `max_interp_gap` samples).
+  valid_ranges:
+    temp_c: [-30.0, 60.0]
+    skin_temp_c: [10.0, 45.0]
+    rh_pct: [10.0, 100.0]
+  max_interp_gap: 10
+  # A gap between two consecutive samples longer than this starts a new
+  # continuous run; input windows never span two runs.
+  max_gap_s: 60.0
+
+target:
+  # 'griffiths': per-occupant neutral temperature derived from the comfort vote
+  #              T_n = T_cabin - vote / G   (Griffiths' method, G in 1/K).
+  #              Used because the released recordings contain no HVAC set-point log.
+  # 'column'   : use recorded target column(s) listed in `columns`
+  #              (e.g. the set temperature of each zone).
+  mode: griffiths
+  zones: ["1", "2"]          # "1" driver, "2" front passenger, "3l"/"3r" rear seats
+  griffiths_slope: 0.5       # G = 0.5 1/K (Humphreys et al., 2013)
+  columns: []
+
+features:
+  # Basic (environmental) parameters, Fig. 3 of the paper.
+  basic: [ambient_temp_c, cabin_temp_c, cabin_rh_pct, light_intensity]
+  # Personal parameters measured in every zone (the zone prefix is added).
+  # `met` and `clo` are constant in the released data (1.0 met, 0.5 clo) and
+  # therefore carry no information; add them here if your data varies.
+  zone: [skin_temp_c, rh_pct]
+  zones: ["1", "2"]
+  # The comfort vote can only be an input when the target is NOT derived from it.
+  include_vote: false
+
+windows:
+  # Samples per LSTM input window (~3.7 s per sample). Tuned on the validation
+  # split over {1, 5, 10, 20, 30} x learning rate {0.001, 0.003}; a single step
+  # gave the lowest validation loss for all three variants (see README).
+  seq_len: 1
+  stride: 1
+
+split:
+  # 'chronological': first 70 % / next 15 % / last 15 % of every drive.
+  #                  Windows that would straddle two parts are dropped.
+  # 'random'       : shuffled windows. Overestimates performance on this data
+  #                  because neighbouring samples are near-duplicates.
+  mode: chronological
+  train: 0.70
+  val: 0.15
+  test: 0.15
+  # Validation/test windows end at least max(min_context, seq_len - 1) rows
+  # after the start of their part. When tuning seq_len, set it to the largest
+  # seq_len - 1 of the grid so all candidates are scored on the same samples.
+  min_context: 0
+
+# Fixed normalisation x' = (f(x) - centre) / scale, identical for every client,
+# so centralised and federated training see the same inputs and no statistics
+# have to leave a vehicle. Keys starting with '_' match column-name suffixes.
+normalization:
+  _temp_c: [20.0, 10.0]
+  _rh_pct: [40.0, 20.0]
+  light_intensity: [3.0, 3.0, log1p]
+  _vote: [0.0, 1.5]
+  met: [1.2, 0.5]
+  clo: [0.7, 0.4]
+  target: [22.0, 3.0]
+
+model:
+  lstm_units: 50             # basic and personalised baseline (paper: 50 units)
+  base_units: 10             # personalised model: environmental branch
+  zone_units: 20             # personalised model: one branch per zone
+  learning_rate: 0.001
+  batch_size: 32
+
+centralized:
+  epochs: 100
+  patience: 20               # early stopping on validation loss
+
+federated:
+  partition: by_day          # by_day | by_drive | iid
+  num_clients: 2             # used only with partition = iid
+  rounds: 10
+  local_epochs: 10
+  strategy: fedavg           # fedavg | fedper | local
+
+experiment:
+  seeds: [0, 1, 2, 3, 4]
+  variants: [basic, personalized_baseline, personalized_model]
+  regimes: [centralized, local, fedavg, fedper]
+  output_dir: results
