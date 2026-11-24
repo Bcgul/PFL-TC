@@ -1,0 +1,52 @@
+# Cabin thermal-comfort recordings
+
+Sensor recordings from the in-vehicle experiment of the PFL-TC paper (IEEE ETFA 2024).
+One car was driven on two days in January 2024: on day 1 in the evening without
+daylight, on day 2 in the afternoon with solar load. Each day is split into two
+drives with different drivers. A Raspberry Pi polled the sensors about every
+3.7 s (7–8 samples per minute).
+
+`cabin_comfort.csv` has 2,115 rows, one per reading. It was produced from the
+raw Excel export with [`scripts/prepare_data.py`](../scripts/prepare_data.py),
+which keeps only the measurement sheet, renames the columns and replaces the
+driver codes with pseudonymous indices.
+
+| drive_id | day | driver_id | samples | duration | conditions |
+|---:|---:|---:|---:|---:|---|
+| 1 | 1 | 1 | 548 | 43 min | evening, city and highway, no daylight |
+| 2 | 1 | 2 | 435 | 38 min | evening, no daylight |
+| 3 | 2 | 1 | 557 | 47 min | afternoon, solar load |
+| 4 | 2 | 3 | 575 | 50 min | afternoon, solar load |
+
+## Columns
+
+| Column | Unit | Description |
+|---|---|---|
+| `timestamp` | local time | time of the reading |
+| `day` | – | recording day (1 = 1 Jan 2024, 2 = 2 Jan 2024) |
+| `drive_id` | – | continuous drive with one driver (1–4) |
+| `driver_id` | – | pseudonymous driver index (1–3); driver 1 drove on both days |
+| `elapsed_s` | s | time since the start of the drive |
+| `ambient_temp_c` | °C | outside air temperature (sensor outside the window) |
+| `cabin_temp_c` | °C | cabin air temperature (dashboard, next to the HVAC unit) |
+| `cabin_rh_pct` | % | cabin relative humidity |
+| `light_intensity` | sensor reading | uncalibrated light-sensor value on the dashboard, used as a proxy for solar load ("Solar Load" in the paper) |
+| `met` | met | metabolic rate; constant 1.0 in this release |
+| `clo` | clo | clothing insulation; constant 0.5 in this release |
+| `z1_skin_temp_c`, `z2_skin_temp_c`, `z3_skin_temp_c` | °C | local skin temperature in zone 1 (driver), 2 (front passenger) and 3 (rear bench) |
+| `z1_rh_pct`, `z2_rh_pct`, `z3_rh_pct` | % | relative humidity in each zone |
+| `z1_vote`, `z2_vote`, `z3l_vote`, `z3r_vote` | −3 … +3 | thermal sensation vote of the occupant of each seat on the ASHRAE 7-point scale (−3 cold, 0 neutral, +3 hot), recorded by hand roughly every 3 minutes; the paper calls these values PMV. `z3r_vote` is empty on day 2 (seat unoccupied) |
+
+## Things to know before using the data
+
+* **No HVAC set-point log.** The paper's target, the set temperature, is not part of
+  this release. The code therefore derives a per-occupant *neutral temperature*
+  from the comfort votes by default (see the main README). If you have set-point
+  logs, add them as columns and set `target.mode: column`.
+* **Zones are seats, not persons.** The driver changes between drives (`driver_id`)
+  and passengers also changed seats, so a zone's occupant is not always the same person.
+* **`met` and `clo` are constant** and carry no information in this release.
+* **One sensor glitch**: `z3_rh_pct` reads 6 % once (day 1, 17:53:25). The pipeline
+  masks values outside physically plausible ranges and interpolates them.
+* Votes change about every 50 samples, so neighbouring rows are near-duplicates.
+  Split the data in time (as the code does), not at random.
