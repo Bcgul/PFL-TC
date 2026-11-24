@@ -1,0 +1,5 @@
+# One federated client per drive (4 clients) instead of one per recording day.
+federated:
+  partition: by_drive
+experiment:
+  output_dir: results_four_clients
